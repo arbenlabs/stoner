@@ -9,10 +9,12 @@ import (
 	"time"
 )
 
+// **************************************************
 // --------------------------------------------------
 // Primitive Assertions
 // Assertions for primitive types are used to validate the basic types of the data.
 // --------------------------------------------------
+// **************************************************
 
 // AssertNonEmptyString checks if a string is not empty
 func AssertNonEmptyString(value string) error {
@@ -134,7 +136,12 @@ func AssertNonEmptyTime(value time.Time) error {
 	return nil
 }
 
+// **************************************************
+// --------------------------------------------------
 // Range/Boundary Assertions
+// Assertions for range/boundary types are used to validate the range/boundary types of the data.
+// --------------------------------------------------
+// **************************************************
 
 // AssertInRange checks if a number is within a specific range (inclusive)
 func AssertInRange(value, min, max float64) error {
@@ -220,7 +227,12 @@ func AssertMaxValue(value, maxValue float64) error {
 	return nil
 }
 
+// **************************************************
+// --------------------------------------------------
 // Type-Specific Assertions
+// Assertions for specific types are used to validate the specific types of the data.
+// --------------------------------------------------
+// **************************************************
 
 // AssertValidEmail checks if a string is a valid email format
 func AssertValidEmail(email string) error {
@@ -258,7 +270,12 @@ func AssertValidJSON(jsonStr string) error {
 	return nil
 }
 
+// **************************************************
+// --------------------------------------------------
 // Collection Assertions
+// Assertions for collections are used to validate the collections of the data.
+// --------------------------------------------------
+// **************************************************
 
 // AssertContains checks if a slice contains a specific value
 func AssertContains(slice []interface{}, value interface{}) error {
@@ -327,7 +344,12 @@ func isLess(a, b interface{}) bool {
 	return false
 }
 
+// **************************************************
+// --------------------------------------------------
 // Conditional Assertions
+// Assertions for conditional types are used to validate the conditional types of the data.
+// --------------------------------------------------
+// **************************************************
 
 // AssertTrue checks if a boolean value is true
 func AssertTrue(value bool) error {
@@ -377,7 +399,12 @@ func AssertLessThan(actual, expected float64) error {
 	return nil
 }
 
+// **************************************************
+// --------------------------------------------------
 // Time Assertions
+// Assertions for time types are used to validate the time types of the data.
+// --------------------------------------------------
+// **************************************************
 
 // AssertAfter checks if a time is after another time
 func AssertAfter(actual, expected time.Time) error {
@@ -407,7 +434,12 @@ func AssertWithinDuration(actual, expected time.Time, duration time.Duration) er
 	return nil
 }
 
+// **************************************************
+// --------------------------------------------------
 // String Assertions
+// Assertions for string types are used to validate the string types of the data.
+// --------------------------------------------------
+// **************************************************
 
 // AssertMatches checks if a string matches a regex pattern
 func AssertMatches(value, pattern string) error {
