@@ -3,8 +3,9 @@ package middleware
 import (
 	"context"
 	"net/http"
-	"stoner/logger"
 	"time"
+
+	"github.com/arbenlabs/stoner/logger"
 
 	"github.com/gorilla/csrf"
 	"golang.org/x/time/rate"
