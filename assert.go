@@ -1,4 +1,4 @@
-package assertions
+package assert
 
 import (
 	"encoding/json"
@@ -8,6 +8,11 @@ import (
 	"strings"
 	"time"
 )
+
+// --------------------------------------------------
+// Primitive Assertions
+// Assertions for primitive types are used to validate the basic types of the data.
+// --------------------------------------------------
 
 // AssertNonEmptyString checks if a string is not empty
 func AssertNonEmptyString(value string) error {
