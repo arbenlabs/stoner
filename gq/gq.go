@@ -1,6 +1,7 @@
 package gq
 
 import (
+	"context"
 	"database/sql/driver"
 	"encoding/json"
 	"errors"
@@ -9,7 +10,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -578,4 +583,366 @@ func (m *InterfaceMap) Scan(value interface{}) error {
 	}
 
 	return json.Unmarshal(bytes, m)
+}
+
+// **************************************************
+// --------------------------------------------------
+// GORM Connection & Auto-Migration Utilities
+// --------------------------------------------------
+// **************************************************
+
+// GormConfig represents GORM configuration
+type GormConfig struct {
+	Driver          string
+	DSN             string
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime int // in minutes
+	ConnMaxIdleTime int // in minutes
+	LogLevel        string
+	SlowThreshold   int // in milliseconds
+}
+
+// GormConnection represents a GORM connection wrapper
+type GormConnection struct {
+	DB     *gorm.DB
+	Config *GormConfig
+}
+
+// NewGormConnection creates a new GORM connection
+func NewGormConnection(config *GormConfig) (*GormConnection, error) {
+	// Open database connection
+	db, err := gorm.Open(getDialector(config.Driver, config.DSN), &gorm.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to database: %w", err)
+	}
+
+	// Get underlying sql.DB for connection pool configuration
+	sqlDB, err := db.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	// Configure connection pool
+	if config.MaxOpenConns > 0 {
+		sqlDB.SetMaxOpenConns(config.MaxOpenConns)
+	}
+	if config.MaxIdleConns > 0 {
+		sqlDB.SetMaxIdleConns(config.MaxIdleConns)
+	}
+	if config.ConnMaxLifetime > 0 {
+		sqlDB.SetConnMaxLifetime(time.Duration(config.ConnMaxLifetime) * time.Minute)
+	}
+	if config.ConnMaxIdleTime > 0 {
+		sqlDB.SetConnMaxIdleTime(time.Duration(config.ConnMaxIdleTime) * time.Minute)
+	}
+
+	// Test connection
+	if err := sqlDB.Ping(); err != nil {
+		return nil, fmt.Errorf("failed to ping database: %w", err)
+	}
+
+	return &GormConnection{
+		DB:     db,
+		Config: config,
+	}, nil
+}
+
+// AutoMigrate performs auto-migration for the given models
+func (gc *GormConnection) AutoMigrate(models ...interface{}) error {
+	if err := gc.DB.AutoMigrate(models...); err != nil {
+		return fmt.Errorf("auto-migration failed: %w", err)
+	}
+	return nil
+}
+
+// AutoMigrateWithOptions performs auto-migration with custom options
+func (gc *GormConnection) AutoMigrateWithOptions(models []interface{}) error {
+	if err := gc.DB.AutoMigrate(models...); err != nil {
+		return fmt.Errorf("auto-migration with options failed: %w", err)
+	}
+	return nil
+}
+
+// MigrateTable creates a table for the given model
+func (gc *GormConnection) MigrateTable(model interface{}) error {
+	if err := gc.DB.Migrator().CreateTable(model); err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+	return nil
+}
+
+// DropTable drops a table for the given model
+func (gc *GormConnection) DropTable(model interface{}) error {
+	if err := gc.DB.Migrator().DropTable(model); err != nil {
+		return fmt.Errorf("failed to drop table: %w", err)
+	}
+	return nil
+}
+
+// HasTable checks if a table exists
+func (gc *GormConnection) HasTable(model interface{}) bool {
+	return gc.DB.Migrator().HasTable(model)
+}
+
+// AddColumn adds a column to a table
+func (gc *GormConnection) AddColumn(model interface{}, field string) error {
+	if err := gc.DB.Migrator().AddColumn(model, field); err != nil {
+		return fmt.Errorf("failed to add column %s: %w", field, err)
+	}
+	return nil
+}
+
+// DropColumn drops a column from a table
+func (gc *GormConnection) DropColumn(model interface{}, field string) error {
+	if err := gc.DB.Migrator().DropColumn(model, field); err != nil {
+		return fmt.Errorf("failed to drop column %s: %w", field, err)
+	}
+	return nil
+}
+
+// HasColumn checks if a column exists
+func (gc *GormConnection) HasColumn(model interface{}, field string) bool {
+	return gc.DB.Migrator().HasColumn(model, field)
+}
+
+// CreateIndex creates an index
+func (gc *GormConnection) CreateIndex(model interface{}, name string) error {
+	if err := gc.DB.Migrator().CreateIndex(model, name); err != nil {
+		return fmt.Errorf("failed to create index %s: %w", name, err)
+	}
+	return nil
+}
+
+// DropIndex drops an index
+func (gc *GormConnection) DropIndex(model interface{}, name string) error {
+	if err := gc.DB.Migrator().DropIndex(model, name); err != nil {
+		return fmt.Errorf("failed to drop index %s: %w", name, err)
+	}
+	return nil
+}
+
+// HasIndex checks if an index exists
+func (gc *GormConnection) HasIndex(model interface{}, name string) bool {
+	return gc.DB.Migrator().HasIndex(model, name)
+}
+
+// Close closes the database connection
+func (gc *GormConnection) Close() error {
+	sqlDB, err := gc.DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+	return sqlDB.Close()
+}
+
+// Ping tests the database connection
+func (gc *GormConnection) Ping() error {
+	sqlDB, err := gc.DB.DB()
+	if err != nil {
+		return fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+	return sqlDB.Ping()
+}
+
+// Stats returns database connection statistics
+func (gc *GormConnection) Stats() (map[string]interface{}, error) {
+	sqlDB, err := gc.DB.DB()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
+	}
+
+	stats := sqlDB.Stats()
+	return map[string]interface{}{
+		"max_open_connections": stats.MaxOpenConnections,
+		"open_connections":     stats.OpenConnections,
+		"in_use":               stats.InUse,
+		"idle":                 stats.Idle,
+		"wait_count":           stats.WaitCount,
+		"wait_duration":        stats.WaitDuration,
+		"max_idle_closed":      stats.MaxIdleClosed,
+		"max_idle_time_closed": stats.MaxIdleTimeClosed,
+		"max_lifetime_closed":  stats.MaxLifetimeClosed,
+	}, nil
+}
+
+// Transaction executes a function within a transaction
+func (gc *GormConnection) Transaction(fn func(*gorm.DB) error) error {
+	return gc.DB.Transaction(fn)
+}
+
+// Begin begins a new transaction
+func (gc *GormConnection) Begin() *gorm.DB {
+	return gc.DB.Begin()
+}
+
+// WithContext returns a DB instance with context
+func (gc *GormConnection) WithContext(ctx context.Context) *gorm.DB {
+	return gc.DB.WithContext(ctx)
+}
+
+// Raw executes raw SQL
+func (gc *GormConnection) Raw(sql string, values ...interface{}) *gorm.DB {
+	return gc.DB.Raw(sql, values...)
+}
+
+// Exec executes raw SQL without returning rows
+func (gc *GormConnection) Exec(sql string, values ...interface{}) *gorm.DB {
+	return gc.DB.Exec(sql, values...)
+}
+
+// **************************************************
+// --------------------------------------------------
+// Migration Utilities
+// --------------------------------------------------
+// **************************************************
+
+// Migration represents a database migration
+type Migration struct {
+	Version     string
+	Description string
+	Up          func(*gorm.DB) error
+	Down        func(*gorm.DB) error
+}
+
+// Migrator manages database migrations
+type Migrator struct {
+	db         *gorm.DB
+	migrations []Migration
+}
+
+// NewMigrator creates a new migrator
+func NewMigrator(db *gorm.DB) *Migrator {
+	return &Migrator{
+		db:         db,
+		migrations: make([]Migration, 0),
+	}
+}
+
+// AddMigration adds a migration
+func (m *Migrator) AddMigration(migration Migration) {
+	m.migrations = append(m.migrations, migration)
+}
+
+// CreateMigrationsTable creates the migrations table
+func (m *Migrator) CreateMigrationsTable() error {
+	query := `
+		CREATE TABLE IF NOT EXISTS migrations (
+			version VARCHAR(255) PRIMARY KEY,
+			description TEXT,
+			applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+		)
+	`
+
+	if err := m.db.Exec(query).Error; err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	return nil
+}
+
+// RunMigrations runs all pending migrations
+func (m *Migrator) RunMigrations() error {
+	if err := m.CreateMigrationsTable(); err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	for _, migration := range m.migrations {
+		// Check if migration already applied
+		var count int64
+		err := m.db.Raw("SELECT COUNT(*) FROM migrations WHERE version = ?", migration.Version).Scan(&count).Error
+		if err != nil {
+			return fmt.Errorf("failed to check migration status: %w", err)
+		}
+
+		if count > 0 {
+			continue // Migration already applied
+		}
+
+		// Run migration
+		if err := migration.Up(m.db); err != nil {
+			return fmt.Errorf("failed to run migration %s: %w", migration.Version, err)
+		}
+
+		// Record migration
+		if err := m.db.Exec("INSERT INTO migrations (version, description) VALUES (?, ?)",
+			migration.Version, migration.Description).Error; err != nil {
+			return fmt.Errorf("failed to record migration %s: %w", migration.Version, err)
+		}
+	}
+
+	return nil
+}
+
+// RollbackMigrations rolls back migrations
+func (m *Migrator) RollbackMigrations(count int) error {
+	// Get applied migrations in reverse order
+	query := `
+		SELECT version FROM migrations 
+		ORDER BY applied_at DESC 
+		LIMIT ?
+	`
+
+	var versions []string
+	if err := m.db.Raw(query, count).Scan(&versions).Error; err != nil {
+		return fmt.Errorf("failed to get migrations: %w", err)
+	}
+
+	// Rollback migrations
+	for _, version := range versions {
+		// Find migration
+		var migration *Migration
+		for _, m := range m.migrations {
+			if m.Version == version {
+				migration = &m
+				break
+			}
+		}
+
+		if migration == nil {
+			return fmt.Errorf("migration %s not found", version)
+		}
+
+		// Run down migration
+		if err := migration.Down(m.db); err != nil {
+			return fmt.Errorf("failed to rollback migration %s: %w", version, err)
+		}
+
+		// Remove migration record
+		if err := m.db.Exec("DELETE FROM migrations WHERE version = ?", version).Error; err != nil {
+			return fmt.Errorf("failed to remove migration record %s: %w", version, err)
+		}
+	}
+
+	return nil
+}
+
+// GetAppliedMigrations returns list of applied migrations
+func (m *Migrator) GetAppliedMigrations() ([]string, error) {
+	var versions []string
+	if err := m.db.Raw("SELECT version FROM migrations ORDER BY applied_at ASC").Scan(&versions).Error; err != nil {
+		return nil, fmt.Errorf("failed to get applied migrations: %w", err)
+	}
+	return versions, nil
+}
+
+// **************************************************
+// --------------------------------------------------
+// Helper Functions
+// --------------------------------------------------
+// **************************************************
+
+// getDialector returns the appropriate GORM dialector based on driver
+func getDialector(driver, dsn string) gorm.Dialector {
+	switch strings.ToLower(driver) {
+	case "postgres", "postgresql":
+		return postgres.Open(dsn)
+	case "mysql":
+		return mysql.Open(dsn)
+	case "sqlite", "sqlite3":
+		return sqlite.Open(dsn)
+	default:
+		// Default to postgres
+		return postgres.Open(dsn)
+	}
 }
