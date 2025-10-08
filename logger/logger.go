@@ -301,3 +301,79 @@ func ContextWithRequestID(ctx context.Context, requestID string) context.Context
 func ContextWithUserID(ctx context.Context, userID interface{}) context.Context {
 	return context.WithValue(ctx, UserIDKey, userID)
 }
+
+// LogHTTPRequest logs an HTTP request.
+func (l *Logger) LogHTTPRequest(method, path, userAgent, clientIP string, contentType string) {
+	l.Info("HTTP request",
+		"method", method,
+		"path", path,
+		"user_agent", userAgent,
+		"client_ip", clientIP,
+		"content_type", contentType,
+	)
+}
+
+// LogDBOperation logs a database operation.
+func (l *Logger) LogDBOperation(operation, table string, duration time.Duration, rowsAffected int64, err error) {
+	fields := []interface{}{
+		"operation", operation,
+		"table", table,
+		"duration_ms", duration.Milliseconds(),
+		"rows_affected", rowsAffected,
+	}
+
+	if err != nil {
+		fields = append(fields, "error", err.Error())
+		l.Error("Database operation failed", fields...)
+	} else {
+		l.Debug("Database operation completed", fields...)
+	}
+}
+
+// LogAPICall logs an API call.
+func (l *Logger) LogAPICall(service, endpoint, method string, statusCode int, duration time.Duration, err error) {
+	fields := []interface{}{
+		"external_service", service,
+		"endpoint", endpoint,
+		"method", method,
+		"status_code", statusCode,
+		"duration_ms", duration.Milliseconds(),
+	}
+
+	if err != nil {
+		fields = append(fields, "error", err.Error())
+		l.Error("External API call failed", fields...)
+	} else {
+		l.Info("External API call completed", fields...)
+	}
+}
+
+// LogSecurityEvent logs a security event.
+func (l *Logger) LogSecurityEvent(event, reason string, severity string, fields map[string]interface{}) {
+	args := []interface{}{
+		"security_event", event,
+		"reason", reason,
+		"severity", severity,
+	}
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+	l.Warn("Security event", args...)
+}
+
+// LogPerformance logs a performance metric.
+func (l *Logger) LogPerformance(operation string, duration time.Duration, fields map[string]interface{}) {
+	args := []interface{}{
+		"performance_metric", operation,
+		"duration_ms", duration.Milliseconds(),
+	}
+	for k, v := range fields {
+		args = append(args, k, v)
+	}
+
+	if duration > 5*time.Second {
+		l.Warn("Slow operation detected", args...)
+	} else {
+		l.Debug("Performance metric", args...)
+	}
+}
