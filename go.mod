@@ -1,4 +1,4 @@
-module stoner
+module github.com/arbenlabs/stoner
 
 go 1.24.6
 
